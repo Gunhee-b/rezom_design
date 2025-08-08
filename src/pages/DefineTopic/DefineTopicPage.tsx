@@ -2,7 +2,7 @@
 import { useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { MindmapCanvas } from '@/widgets/mindmap/MindmapCanvas';
-import { TOPIC_PRESETS } from './topic.presets';
+import { TOPIC_PRESETS } from '@/data/presets/topic';
 import { makeTopicSchema } from './makeTopicSchema';
 
 function cap(s: string) {

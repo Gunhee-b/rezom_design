@@ -4,6 +4,7 @@ import type { Node } from './types';
 import { TOKENS } from '@/shared/theme/tokens';
 import { MindNode } from '@/molecules/MindNode';
 import { Logo } from '@/atoms/Logo';
+import { resolveLink } from '@/shared/schema/rules';
 
 type Props = {
   nodes: Node[];
@@ -51,7 +52,7 @@ export const Nodes = memo(function Nodes({ nodes, map }: Props) {
         return (
           <g key={n.id} data-node-id={n.id}>
             {n.to && !n.disabled ? (
-              <a href={n.to} aria-label={n.ariaLabel || n.label}>
+              <a href={resolveLink(n.to)} aria-label={n.ariaLabel || n.label}>
                 {inner}
               </a>
             ) : (
