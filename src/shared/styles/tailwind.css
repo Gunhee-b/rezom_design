@@ -1,0 +1,6 @@
+/* src/shared/styles/tailwind.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 여기에 프로젝트 전역 스타일을 추가 가능 */
