@@ -16,7 +16,6 @@ export function Nodes({
   const refHandlers = useMemo(() => {
     const m = new Map<string, (el: Element | null) => void>();
     nodes.forEach(n => {
-      if ((n as any).kind === "anchor") return;
       m.set(n.id, (el) => onNodeMount?.(n.id, el));
     });
     return m;
@@ -25,7 +24,6 @@ export function Nodes({
   return (
     <g data-layer="nodes">
       {nodes.map((n) => {
-        if ((n as any).kind === "anchor") return null; // 위치 기준용은 렌더 X
         const p = map({ x: n.x, y: n.y });
 
         let content: JSX.Element;
@@ -57,6 +55,13 @@ export function Nodes({
             >
               {n.label}
             </text>
+          );
+        } else if (n.kind === "anchor") {
+          // anchor 노드는 작은 점으로 표시 (디버깅용)
+          content = (
+            <g>
+              <circle r={3} fill="red" opacity={0.6} />
+            </g>
           );
         } else {
           const r =

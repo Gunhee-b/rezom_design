@@ -61,6 +61,7 @@ export type SpriteDecl =
       dx?: number;      // px
       dy?: number;      // px
       rotate?: number;  // deg
+      bow?: number;     // 회전 보정 각도(도)
     };
 
 // ─ View

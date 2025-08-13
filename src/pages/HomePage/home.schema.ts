@@ -18,7 +18,7 @@ export const homeSchema: ViewSchema = {
     { id: idFor(P, 'free'),     label: 'Free Insight',        x: 22, y: 82, size: 'md', to: idFor(P, '/free-insight') },
     { id: idFor(P, 'profile'),  label: 'Profile',             x: 60, y: 78, size: 'md', to: idFor(P, '/profile') },
     { id: idFor(P, 'reco'),     label: 'Recommended\nQuestions', x: 83, y: 86, size: 'md', to: idFor(P, '/recommend') },
-    { id: idFor(P, 'login-anchor'), kind: 'anchor', x: 50, y: 93 },  // ✅ 화면 하단 Login 근처
+    { id: idFor(P, 'login-anchor'), kind: 'label', label: 'Login', x: 50, y: 98, fontSize: 24, fontWeight: 700 },  // ✅ Login 텍스트 표시
   ],
   edges: [
     { id: idFor(P, 'vine'),   from: idFor(P, 'todays'), to: idFor(P, 'profile'), style: 'green', curvature: 0.22 },
@@ -29,10 +29,11 @@ export const homeSchema: ViewSchema = {
     { id: idFor(P, 'line-5'), from: idFor(P, 'free'),    to: idFor(P, 'profile'),style: 'thin',  curvature: -0.25 },
   ],
   sprites: [
-    { id: idFor(P, 'vine-login'), type: 'vine', from: idFor(P, 'logo'), to: idFor(P, 'login-anchor'), scale: 1.6,   // 크기 키우기
-      dx: -3,       // 로고쪽으로 약간 왼쪽
-      dy: -6,       // 로고쪽으로 약간 위
-      rotate: 0,
+    { id: idFor(P, 'vine-login'), type: 'vine', from: idFor(P, 'logo'), to: idFor(P, 'login-anchor'), scale: 2.8,   // 크기 조정
+      dx: 0,        // 로고쪽으로 이동 없음
+      dy: 25,       // 로고 하단에서 시작하도록
+      rotate: 0,    // 회전 제거
+      bow: 50,      // 자연스러운 곡선을 위한 회전 보정
     },
   ],
 };

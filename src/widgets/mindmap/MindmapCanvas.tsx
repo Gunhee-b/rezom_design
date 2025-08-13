@@ -55,6 +55,7 @@ export const MindmapCanvas = memo(function MindmapCanvas({ schema, onNodeMount }
               dx={s.dx}
               dy={s.dy}
               rotate={s.rotate}
+              bow={s.bow}
             />
           );
         })}

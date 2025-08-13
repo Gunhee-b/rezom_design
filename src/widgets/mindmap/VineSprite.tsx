@@ -23,11 +23,15 @@ export function VineSprite({
   bow = 0,
   mirror = false,
   rotate = 0,
-  anchor = { x: 0.5, y: 1 },
+  anchor = { x: 0.5, y: 0.1 }, // 상단 중앙에서 약간 아래로 조정
   dx = 0,
   dy = 0,
 }: Props) {
+  // a(logo)에서 b(login-anchor)로의 각도 계산
   const ang = (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
+
+  // 디버깅용 로그
+  console.log('VineSprite render:', { a, b, ang, scale, bow, dx, dy });
 
   // 프로젝트에 맞게 조절 가능한 기본 에셋 크기
   const VW = 80;
@@ -40,6 +44,7 @@ export function VineSprite({
   const tx = b.x + dx;
   const ty = b.y + dy;
 
+  // vine 이미지가 올바른 방향을 향하도록 회전 조정
   const totalRot = ang + bow + rotate;
 
   // anchor 기준 내부 이동량
@@ -52,6 +57,9 @@ export function VineSprite({
       transform={`translate(${tx}, ${ty}) rotate(${totalRot}) translate(${ax}, ${ay})`}
       style={{ pointerEvents: 'none' }}
     >
+      {/* 디버깅용 border */}
+      <rect x={0} y={0} width={Math.abs(w)} height={h} fill="none" stroke="blue" strokeWidth="2" opacity="0.3" />
+      
       <image
         href="/vine.svg"
         width={Math.abs(w)}

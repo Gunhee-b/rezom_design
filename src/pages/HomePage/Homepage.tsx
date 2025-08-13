@@ -4,7 +4,6 @@ import { homeSchema } from './home.schema';
 import { TOKENS } from '@/shared/theme/tokens';
 import LoginSection from '@/molecules/LoginSection';
 import Backdrop from '@/atoms/Backdrop';
-import OverlayVine from '@/molecules/OverlayVine';
 import { idFor } from '@/shared/schema/rules';
 
 export default function HomePage() {
@@ -55,7 +54,7 @@ export default function HomePage() {
   const derivedSchema = {
     ...homeSchema,
     background: undefined,
-    // sprites: [], // ← baseline 비교 후 필요 시 활성화
+    sprites: homeSchema.sprites, // vine을 항상 표시
     edges: authed ? homeSchema.edges : homeSchema.edges.filter(e => e.style !== 'green'),
   };
 
@@ -64,9 +63,6 @@ export default function HomePage() {
     setAuthed(true);
     setOpenLogin(false);
   };
-
-  // 제목 노드 id (home.schema 기준)
-  const TITLE_ID = idFor('home', 'todays');
 
   return (
     <main className="relative min-h-screen">
@@ -78,20 +74,7 @@ export default function HomePage() {
         <MindmapCanvas schema={derivedSchema} onNodeMount={handleNodeMount} />
       </div>
 
-      {/* 3) 오버레이 덩굴: 미로그인일 때만, '제목 노드 → 로그인 버튼' */}
-      {!authed && (
-        <OverlayVine
-          fromEl={nodeElMap[TITLE_ID] || null}
-          toEl={loginBtnRef.current}
-          show={!authed}
-          scale={1.2}
-          anchor={{ x: 0.6, y: 0.88 }}
-          startOffset={{ x: 0, y: 8 }}
-          endOffset={{ x: 0, y: -8 }}
-        />
-      )}
-
-      {/* 4) 로그인 섹션 */}
+      {/* 3) 로그인 섹션 */}
       <section className="relative z-30">
         <LoginSection
           ref={loginBtnRef}
