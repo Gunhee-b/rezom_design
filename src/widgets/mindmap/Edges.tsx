@@ -1,41 +1,52 @@
 // src/widgets/mindmap/Edges.tsx
-import React, { memo } from 'react';
+import React from 'react';
 import type { Edge } from './types';
-import { quadPath, Pt } from '@/shared/lib/geo';
 import { TOKENS } from '@/shared/theme/tokens';
 
 type Props = {
   edges: Edge[];
-  getOpt: (id: string) => Pt | undefined;
+  getOpt: (id: string) => { x: number; y: number } | undefined;
   hasId: (id: string) => boolean;
-  defaultK?: number;
 };
 
-export const Edges = memo(function Edges({ edges, getOpt, hasId, defaultK = TOKENS.curve.k }: Props) {
+export function Edges({ edges, getOpt, hasId }: Props) {
+  const S = TOKENS.edge.map ?? {
+    thin: { width: 2, color: '#D0D0D0' },
+    thick: { width: 3, color: '#222' },
+    green: { width: 8, color: '#1B5E20' },
+    brown: { width: 8, color: '#5D4037' },
+    default: { width: 2, color: '#9E9E9E' },
+  };
+
   return (
-    <>
+    <g data-layer="edges">
       {edges.map((e) => {
-        if (!hasId(e.from) || !hasId(e.to)) {
-          // 개발 중 디버깅용 경고(앱 크래시 방지)
-          console.warn('[Edges] missing node for edge:', e);
-          return null;
-        }
+        if (!hasId(e.from) || !hasId(e.to)) return null;
         const a = getOpt(e.from)!;
         const b = getOpt(e.to)!;
-        const d = quadPath(a, b, e.curvature ?? defaultK);
-        const style = TOKENS.edge.map[e.style ?? 'default'];
+        const mx = (a.x + b.x) / 2;
+        const my = (a.y + b.y) / 2;
+        const dx = b.y - a.y;
+        const dy = a.x - b.x;
+        const k = e.curvature ?? 0;
+        const cx = mx + dx * k;
+        const cy = my + dy * k;
+        const d = `M ${a.x},${a.y} Q ${cx},${cy} ${b.x},${b.y}`;
+
+        const style = (S as any)[e.style] ?? S.default;
 
         return (
           <path
             key={e.id}
             d={d}
             fill="none"
-            stroke={style.stroke}
+            stroke={style.color}
             strokeWidth={style.width}
             strokeLinecap="round"
+            vectorEffect="non-scaling-stroke"
           />
         );
       })}
-    </>
+    </g>
   );
-});
+}

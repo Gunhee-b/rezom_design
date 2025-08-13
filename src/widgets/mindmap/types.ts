@@ -1,62 +1,72 @@
-// 공통 좌표 타입 (0–100 퍼센트 좌표를 사용)
-export type Percent = number; // 0~100 범위를 의도
+// src/widgets/mindmap/types.ts
+
+export type Percent = number; // 0~100
 export type Point = { x: Percent; y: Percent };
 
-/** 공통 노드 베이스 */
+// ─ Nodes
 export interface NodeBase extends Point {
   id: string;
-  /** 클릭 시 이동할 라우트(선택) */
   to?: string;
-  /** 접근성용 라벨(선택. 없으면 label 사용) */
   ariaLabel?: string;
-  /** 상호작용 비활성화 플래그(선택) */
   disabled?: boolean;
   label?: string;
   size?: 'sm' | 'md' | 'lg';
 }
 
-/** 일반 타원 노드: 라벨/사이즈가 있을 수도, 없을 수도 있음 */
+// ellipse: kind 생략 가능, oval 별칭도 허용
 export interface EllipseNode extends NodeBase {
-  /** kind가 없거나 'ellipse'면 일반 노드로 취급 */
-  kind?: 'ellipse';
+  kind?: 'ellipse' | 'oval';
 }
 
-/** 로고 노드: 화면 중앙의 로고 텍스트 전용. 라벨/사이즈 불필요 */
+// 중앙 로고
 export interface LogoNode extends NodeBase {
   kind: 'logo';
 }
 
-/** 텍스트만 렌더하는 라벨 노드 */
+// 텍스트 전용 라벨
 export interface LabelNode extends NodeBase {
   kind: 'label';
-  /** 표시할 텍스트 (label 사용) */
-  label: string;           // 라벨은 필수
-  fontSize?: number;       // 선택: 기본값은 TOKENS.node.label.size
-  fontWeight?: number;     // 선택
+  label: string;
+  fontSize?: number;
+  fontWeight?: number;
 }
 
-export type Node = EllipseNode | LogoNode | LabelNode;
+// 위치 기준용(표시 X)
+export interface AnchorNode extends NodeBase {
+  kind: 'anchor';
+}
 
-/** 엣지 스타일 */
+export type Node = EllipseNode | LogoNode | LabelNode | AnchorNode;
+
+// ─ Edges
 export type EdgeStyle = 'thin' | 'thick' | 'green' | 'brown' | 'default';
 
 export interface Edge {
   id: string;
-  from: string; // 시작 노드 id
-  to: string;   // 끝 노드 id
+  from: string;
+  to: string;
   style: EdgeStyle;
-  /** 곡률 계수(선택). 0이면 직선과 베지어의 중간 정도 */
   curvature?: number;
 }
 
-/** 한 페이지(View)를 구성하는 스키마 */
+// ─ Sprites (vine)
+export type SpriteDecl =
+  | {
+      id: string;
+      type: 'vine';
+      from: string;
+      to: string;
+      // 옵션(있어도 되고 없어도 됨): 위치/크기 미세조정
+      scale?: number;   // 기본 1
+      dx?: number;      // px
+      dy?: number;      // px
+      rotate?: number;  // deg
+    };
+
+// ─ View
 export interface ViewSchema {
-  background?: string; // e.g., 'paperGloss' (접근성 라벨 등에 사용)
+  background?: 'paperGloss' | string;
   nodes: Node[];
   edges: Edge[];
-}
-
-/** 타입 가드 (필요 시 사용) */
-export function isLogoNode(n: Node): n is LogoNode {
-  return (n as LogoNode).kind === 'logo';
+  sprites?: SpriteDecl[];
 }

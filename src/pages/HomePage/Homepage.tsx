@@ -1,169 +1,102 @@
-import { useEffect, useRef, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { MindmapCanvas } from '@/widgets/mindmap/MindmapCanvas';
 import { homeSchema } from './home.schema';
 import { TOKENS } from '@/shared/theme/tokens';
-import { Pt, quadPath } from '@/shared/lib/svg';
 import LoginSection from '@/molecules/LoginSection';
-
-const VIEWBOX_W = TOKENS.viewBox.w;
-const BASE_VINE = TOKENS.edge.map.green.width;
-
-function centerOf(el: Element | null): Pt | null {
-  if (!el) return null;
-  const r = (el as HTMLElement).getBoundingClientRect();
-  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-}
+import Backdrop from '@/atoms/Backdrop';
+import OverlayVine from '@/molecules/OverlayVine';
+import { idFor } from '@/shared/schema/rules';
 
 export default function HomePage() {
   const [openLogin, setOpenLogin] = useState(false);
   const [logoFontPx, setLogoFontPx] = useState<number>(TOKENS.typography.logo.size);
   const [authed, setAuthed] = useState(() => localStorage.getItem('authed') === '1');
 
-  // overlay vine
-  const [vineD, setVineD] = useState<string | null>(null);
-  const [drawVine, setDrawVine] = useState(false);
-  const [vineWidth, setVineWidth] = useState(6);
-
   const loginBtnRef = useRef<HTMLButtonElement>(null);
-  const sectionRef = useRef<HTMLElement>(null);
 
-  // 로고 실측 → Login 텍스트 크기(50%)
+  // 🔹 Mindmap 노드 DOM 참조 저장소 (렌더와 분리: ref)
+  const nodeElMapRef = useRef<Record<string, Element | null>>({});
+  // 화면에서 참조할 readonly 상태
+  const [nodeElMap, setNodeElMap] = useState<Record<string, Element | null>>({});
+
+  // ✅ 무한루프 방지: null 무시 + 동일 엘리먼트 중복 업데이트 금지 + 안정 콜백
+  const handleNodeMount = useCallback((id: string, el: Element | null) => {
+    if (!el) return; // cleanup(null)은 무시
+    if (nodeElMapRef.current[id] === el) return; // 동일 참조면 무시
+    nodeElMapRef.current = { ...nodeElMapRef.current, [id]: el };
+    setNodeElMap(nodeElMapRef.current);
+  }, []);
+
+  // 로고 텍스트 실높이 측정(없으면 조용히 무시)
   useEffect(() => {
-    const selector = 'svg text[data-role="logo-text"]';
-    const query = () => document.querySelector<SVGTextElement>(selector);
+    const sel = 'svg [data-role="logo-text"]';
+    let mo: MutationObserver | null = null;
 
     const measure = () => {
-      const t = query();
-      if (!t) return; // 안전: 요소가 없으면 종료
-      const rect = t.getBoundingClientRect();
-      const h = rect.height;
-      setLogoFontPx(Math.max(28, Math.min(72, Math.round(h))));
+      const t = document.querySelector<SVGGraphicsElement>(sel);
+      if (!t) return;
+      const h = t.getBoundingClientRect().height;
+      setLogoFontPx(Math.max(24, Math.min(72, Math.round(h))));
     };
 
     measure();
-    const ro = new ResizeObserver(measure);
-    const el = query();
-    if (el) ro.observe(el);
+    addEventListener('resize', measure);
+    mo = new MutationObserver(measure);
+    mo.observe(document.body, { childList: true, subtree: true });
 
-    window.addEventListener('resize', measure);
     return () => {
-      ro.disconnect();
-      window.removeEventListener('resize', measure);
+      removeEventListener('resize', measure);
+      mo?.disconnect();
     };
   }, []);
 
-  // 캔버스 폭 기준 오버레이 선 두께 환산
-  useEffect(() => {
-    const calcWidth = () => {
-      const svg = document.querySelector<SVGSVGElement>('[data-canvas-root]');
-      const w = svg?.getBoundingClientRect().width ?? window.innerWidth;
-      const px = (w / VIEWBOX_W) * BASE_VINE;
-      setVineWidth(Math.max(2.5, Math.min(10, px)));
-    };
-    calcWidth();
-    window.addEventListener('resize', calcWidth);
-    return () => window.removeEventListener('resize', calcWidth);
-  }, []);
+  // 캔버스용 파생 스키마: 배경은 Backdrop에서 처리
+  // 참고) 기준 비교가 필요하면 sprites 주석 해제하여 캔버스 내부 vine을 확인
+  const derivedSchema = {
+    ...homeSchema,
+    background: undefined,
+    // sprites: [], // ← baseline 비교 후 필요 시 활성화
+    edges: authed ? homeSchema.edges : homeSchema.edges.filter(e => e.style !== 'green'),
+  };
 
-  // 섹션 보이면(미로그인일 때) ReZom→Login 경로 계산 & 드로우
-  useEffect(() => {
-    if (authed) return;
-
-    const sec = sectionRef.current;
-    if (!sec) return;
-
-    const onIntersect: IntersectionObserverCallback = (entries) => {
-      const visible = entries.some((e) => e.isIntersecting && e.intersectionRatio > 0.2);
-      if (!visible) return;
-
-      const logoEl = document.querySelector('svg text[data-role="logo-text"]');
-      const start = centerOf(logoEl);
-      const end = centerOf(loginBtnRef.current!);
-      if (!start || !end) return;
-
-      setVineD(quadPath(start, end, 0.18));
-      setDrawVine(false);
-      requestAnimationFrame(() => setDrawVine(true));
-    };
-
-    const io = new IntersectionObserver(onIntersect, { threshold: [0.2, 0.6] });
-    io.observe(sec);
-    return () => io.disconnect();
-  }, [authed]);
-
-  // 리사이즈/스크롤 재계산 (미로그인일 때만)
-  useEffect(() => {
-    const recalc = () => {
-      if (authed) return;
-
-      const logoEl = document.querySelector('svg text[data-role="logo-text"]');
-      const start = centerOf(logoEl);
-      const end = centerOf(loginBtnRef.current);
-      if (!start || !end) return;
-
-      setVineD(quadPath(start, end, 0.18));
-    };
-
-    window.addEventListener('resize', recalc);
-    window.addEventListener('scroll', recalc, { passive: true });
-    return () => {
-      window.removeEventListener('resize', recalc);
-      window.removeEventListener('scroll', recalc);
-    };
-  }, [authed]);
-
-  const toggleLogin = () => setOpenLogin((v) => !v);
   const handleLoginSuccess = () => {
     localStorage.setItem('authed', '1');
     setAuthed(true);
     setOpenLogin(false);
-    setDrawVine(false);
   };
 
-  // 미로그인 시, 캔버스의 작은 green edge 숨김
-  const derivedSchema = {
-    ...homeSchema,
-    edges: authed ? homeSchema.edges : homeSchema.edges.filter((e) => e.style !== 'green'),
-  };
+  // 제목 노드 id (home.schema 기준)
+  const TITLE_ID = idFor('home', 'todays');
 
   return (
-    <main className="min-h-screen bg-neutral-50">
-      {/* 상단 허브 */}
-      <div className="pt-6">
-        <MindmapCanvas schema={derivedSchema} />
+    <main className="relative min-h-screen">
+      {/* 1) 배경 */}
+      <Backdrop />
+
+      {/* 2) 캔버스 */}
+      <div className="relative z-10 pt-6">
+        <MindmapCanvas schema={derivedSchema} onNodeMount={handleNodeMount} />
       </div>
 
-      {/* 오버레이 초록선: 로그인 필요시에만 */}
-      <AnimatePresence>
-        {!authed && vineD && drawVine && (
-          <motion.svg
-            key="vine-overlay"
-            className="pointer-events-none fixed inset-0 w-screen h-screen"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-          >
-            <motion.path
-              d={vineD}
-              fill="none"
-              stroke={TOKENS.colors.green}
-              strokeWidth={vineWidth}
-              strokeLinecap="round"
-              initial={{ pathLength: 0 }}
-              animate={{ pathLength: 1 }}
-              transition={{ duration: TOKENS.animation.vineDraw, ease: 'easeInOut' }}
-            />
-          </motion.svg>
-        )}
-      </AnimatePresence>
+      {/* 3) 오버레이 덩굴: 미로그인일 때만, '제목 노드 → 로그인 버튼' */}
+      {!authed && (
+        <OverlayVine
+          fromEl={nodeElMap[TITLE_ID] || null}
+          toEl={loginBtnRef.current}
+          show={!authed}
+          scale={1.2}
+          anchor={{ x: 0.6, y: 0.88 }}
+          startOffset={{ x: 0, y: 8 }}
+          endOffset={{ x: 0, y: -8 }}
+        />
+      )}
 
-      {/* 아래 섹션: molecule 사용 */}
-      <section ref={sectionRef}>
+      {/* 4) 로그인 섹션 */}
+      <section className="relative z-30">
         <LoginSection
           ref={loginBtnRef}
           open={openLogin}
-          onToggle={toggleLogin}
+          onToggle={() => setOpenLogin(v => !v)}
           onSuccess={handleLoginSuccess}
           buttonFontPx={logoFontPx * 0.5}
           panelScale={0.2}

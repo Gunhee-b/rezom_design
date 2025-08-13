@@ -1,22 +1,25 @@
-// src/widgets/mindmap/MindmapCanvas.tsx
 import React, { memo, useMemo } from 'react';
 import type { ViewSchema } from './types';
 import { Edges } from './Edges';
 import { Nodes } from './Nodes';
 import { mapPercentToPx, Pt } from '@/shared/lib/geo';
+import { VineSprite } from './VineSprite';
 
-type Props = { schema: ViewSchema; interactive?: boolean };
+type Props = {
+  schema: ViewSchema;
+  interactive?: boolean;
+  onNodeMount?: (id: string, el: Element | null) => void;
+};
 
 const W = 1000;
 const H = 700;
 
-export const MindmapCanvas = memo(function MindmapCanvas({ schema }: Props) {
+export const MindmapCanvas = memo(function MindmapCanvas({ schema, onNodeMount }: Props) {
   const map = (p: { x: number; y: number }) => ({
     x: mapPercentToPx(p.x, W),
     y: mapPercentToPx(p.y, H),
   });
 
-  // id → 좌표 인덱스 + 존재 체크
   const { getOpt, hasId } = useMemo(() => {
     const idx = new Map<string, Pt>();
     for (const n of schema.nodes) idx.set(n.id, map({ x: n.x, y: n.y }));
@@ -27,20 +30,37 @@ export const MindmapCanvas = memo(function MindmapCanvas({ schema }: Props) {
   }, [schema.nodes]);
 
   return (
-    // <div className="relative w-full h-[80vh]">
-    <div className="relative" style={{ width: '100%', height: '80vh' }}>
+    <div className="relative w-full h-[80vh]">
       <svg
         viewBox={`0 0 ${W} ${H}`}
         className="absolute inset-0 w-full h-full"
-        style={{ width: '100%', height: '100%', outline: '1px dashed #ddd' }}
         data-canvas-root
         aria-label={schema.background ?? 'mindmap'}
       >
-        {/* edges (존재하는 id만 그리도록) */}
+        {/* 1) edges */}
         <Edges edges={schema.edges} getOpt={getOpt} hasId={hasId} />
 
-        {/* nodes */}
-        <Nodes nodes={schema.nodes} map={map} />
+        {/* 2) sprites (vine 등) - edges 위, nodes 아래 */}
+        {schema.sprites?.map((s) => {
+          if (s.type !== 'vine') return null;
+          const a = getOpt(s.from);
+          const b = getOpt(s.to);
+          if (!a || !b) return null;
+          return (
+            <VineSprite
+              key={s.id}
+              a={a}
+              b={b}
+              scale={s.scale}
+              dx={s.dx}
+              dy={s.dy}
+              rotate={s.rotate}
+            />
+          );
+        })}
+
+        {/* 3) nodes */}
+        <Nodes nodes={schema.nodes} map={map} onNodeMount={onNodeMount} />
       </svg>
     </div>
   );

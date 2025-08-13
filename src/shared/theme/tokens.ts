@@ -29,4 +29,15 @@ export const TOKENS = {
   typography: { logo: { size: 56, weight: 800 } },
 
   animation: { vineDraw: 0.9 },
+
+  sprites: {
+    vine: {
+      baseLen: 360,
+      height: 160,
+      startPadding: 6,
+      endPadding: 6,
+      bowDefault: 0.18, // ✅ 살짝 휨 정도(0~0.35)
+      mirrorDefault: true, // ✅ 필요 시 기본 좌우반전
+    },
+  },
 } as const;
