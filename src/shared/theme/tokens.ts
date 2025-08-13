@@ -16,12 +16,10 @@ export const TOKENS = {
   },
 
   edge: {
-    map: {
-      green:  { stroke: '#1B5E20', width: 8 },
-      brown:  { stroke: '#5D4037', width: 8 },
-      thin:   { stroke: '#9E9E9E', width: 2 },
-      default:{ stroke: '#9E9E9E', width: 2 },
-    },
+    green:  { color: '#1B5E20', width: 8 },
+    brown:  { color: '#5D4037', width: 8 },
+    thin:   { color: '#9E9E9E', width: 2 },
+    default:{ color: '#9E9E9E', width: 2 },
   },
 
   curve: { k: 0.18 }, // 기본 곡률
@@ -41,3 +39,5 @@ export const TOKENS = {
     },
   },
 } as const;
+
+export type EdgeKind = keyof typeof TOKENS.edge;

@@ -10,13 +10,7 @@ type Props = {
 };
 
 export function Edges({ edges, getOpt, hasId }: Props) {
-  const S = TOKENS.edge.map ?? {
-    thin: { width: 2, color: '#D0D0D0' },
-    thick: { width: 3, color: '#222' },
-    green: { width: 8, color: '#1B5E20' },
-    brown: { width: 8, color: '#5D4037' },
-    default: { width: 2, color: '#9E9E9E' },
-  };
+  const S = TOKENS.edge;
 
   return (
     <g data-layer="edges">
