@@ -5,6 +5,7 @@ import { homeSchema } from './home.schema';
 import { TOKENS } from '@/shared/theme/tokens';
 import { Pt, quadPath } from '@/shared/lib/svg';
 import LoginSection from '@/molecules/LoginSection';
+import { logout } from '@/shared/api/auth'; // ✅ 사용: 로그아웃 API
 
 const VIEWBOX_W = TOKENS.viewBox.w;
 const BASE_VINE = TOKENS.edge.map.green.width;
@@ -35,7 +36,7 @@ export default function HomePage() {
 
     const measure = () => {
       const t = query();
-      if (!t) return; // 안전: 요소가 없으면 종료
+      if (!t) return;
       const rect = t.getBoundingClientRect();
       const h = rect.height;
       setLogoFontPx(Math.max(28, Math.min(72, Math.round(h))));
@@ -64,6 +65,15 @@ export default function HomePage() {
     calcWidth();
     window.addEventListener('resize', calcWidth);
     return () => window.removeEventListener('resize', calcWidth);
+  }, []);
+
+  // ✅ storage 이벤트로 다른 탭/컴포넌트와 상태 동기화
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'authed') setAuthed(e.newValue === '1');
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
   }, []);
 
   // 섹션 보이면(미로그인일 때) ReZom→Login 경로 계산 & 드로우
@@ -113,12 +123,41 @@ export default function HomePage() {
     };
   }, [authed]);
 
+  // ✅ authed가 true면 오버레이 즉시 제거(깜빡임 방지)
+  useEffect(() => {
+    if (authed) {
+      setDrawVine(false);
+      setVineD(null);
+    }
+  }, [authed]);
+
   const toggleLogin = () => setOpenLogin((v) => !v);
+
   const handleLoginSuccess = () => {
     localStorage.setItem('authed', '1');
     setAuthed(true);
     setOpenLogin(false);
     setDrawVine(false);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logout(); // 서버에 세션/리프레시 쿠키 정리 요청
+    } catch {
+      // 네트워크 실패해도 클라이언트 상태는 정리
+    } finally {
+      localStorage.removeItem('authed');
+      setAuthed(false);
+      setOpenLogin(false);
+      // 로그아웃 직후 경로 재계산(덩굴 다시 보여주기)
+      requestAnimationFrame(() => {
+        const logoEl = document.querySelector('svg text[data-role="logo-text"]');
+        const start = centerOf(logoEl);
+        const end = centerOf(loginBtnRef.current);
+        if (start && end) setVineD(quadPath(start, end, 0.18));
+        setDrawVine(true);
+      });
+    }
   };
 
   // 미로그인 시, 캔버스의 작은 green edge 숨김
@@ -162,11 +201,13 @@ export default function HomePage() {
       <section ref={sectionRef}>
         <LoginSection
           ref={loginBtnRef}
+          authed={authed}
           open={openLogin}
           onToggle={toggleLogin}
           onSuccess={handleLoginSuccess}
-          buttonFontPx={logoFontPx * 0.5}
-          panelScale={0.2}
+          onLogout={handleLogout}
+          buttonFontPx={logoFontPx * 0.6}
+          panelScale={1}
         />
       </section>
     </main>

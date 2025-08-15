@@ -14,17 +14,16 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "baseUrl": ".",
+    "baseUrl": "src",
     "paths": {
-      "@/*": [
-        "./src/*"
-      ]
+      "@/*": ["*"]
     },
     "types": [
-      "vite/client"
+      "vite/client",
+      "vitest/globals"
     ]
   },
   "include": [
-    "src"
+    "src", "src/types"
   ]
 }
