@@ -1,34 +1,57 @@
+// src/app/providers.tsx (혹은 당신 위치 그대로)
 import React, { useEffect, useRef } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { api } from '@/shared/lib/axios'
+import { api } from '@/shared/lib/axios'  // axios 인스턴스
 import { token } from '@/shared/lib/token'
 
 const client = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
 })
 
+function readCookie(name: string) {
+  const m = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`))
+  return m ? decodeURIComponent(m[1]) : undefined
+}
+
 export function Providers({ children }: { children: React.ReactNode }) {
-  const didRun = useRef(false)                       // ✅ StrictMode에서 2중 실행 방지
+  const didRun = useRef(false)
 
   useEffect(() => {
     if (didRun.current) return
     didRun.current = true
 
+    // ✅ axios 인스턴스 전역 기본값(중복 세팅해도 무해)
+    api.defaults.withCredentials = true
+    api.defaults.xsrfCookieName = 'X-CSRF-Token'
+    api.defaults.xsrfHeaderName = 'X-CSRF-Token'
+
     const hasAccess = !!token.get()
     const authed = localStorage.getItem('authed') === '1'
 
-    // ✅ 토큰 & authed 둘 다 있을 때만 조용히 시도
-    if (!hasAccess || !authed) return
+    // ✅ refresh 시도 전 '세션 쿠키 + CSRF 쿠키'가 실제로 있는지 확인
+    const hasRt = !!readCookie('rezom_rt')
+    const csrf = readCookie('X-CSRF-Token')
 
-    // 원치 않으면 다음 줄 주석: 부팅시 silent refresh 자체 비활성화 가능
-    api.post('/auth/refresh', {}, { _noRefresh: true as any })
+    // 조건: (1) 사용자가 로컬 상태상 로그인으로 표시 && (2) 실제 쿠키 2종이 존재
+    if (!authed || !hasRt || !csrf) return
+
+    // 🚫 axios 인터셉터가 재귀 refresh를 하지 않도록 플래그 넘김 (_noRefresh는 당신 코드 호환 유지)
+    api
+      .post(
+        '/auth/refresh',
+        {},
+        {
+          headers: { 'X-CSRF-Token': csrf }, // 안전빵으로 직접 헤더도 명시
+          withCredentials: true,
+          _noRefresh: true,
+        }
+      )
       .then((res) => {
         const at = res?.data?.accessToken
         if (at) token.set(at)
       })
       .catch(() => {
-        // refresh 실패 시 조용히 무시(여기서 콘솔 에러 안 남김)
-        // 실제 보호는 axios 인터셉터에서 처리
+        // 401 등 초기 미로그인 케이스는 조용히 무시
       })
   }, [])
 

@@ -11,12 +11,18 @@ import RequireAuth from '@/shared/router/RequireAuth'
 import MyQuestions from '@/pages/Questions/MyQuestions'              // (기존 페이지: 유지)
 import RouteErrorBoundary from '@/app/RouteErrorBoundary'
 import MyQuestionsPage from '@/pages/MyQuestions/MyQuestionsPage'    // (새 목록형 페이지)
+import RegisterPage from '@/pages/Auth/RegisterPage'
 
 export const router = createBrowserRouter([
   // 공개 홈
   {
     path: '/',
     element: <HomePage />,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
+    path: '/sign-up',
+    element: <RegisterPage />,
     errorElement: <RouteErrorBoundary />,
   },
 

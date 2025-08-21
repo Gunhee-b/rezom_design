@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { login } from '@/shared/api/auth'
+import { Link } from 'react-router-dom'
 
 type Props = {
   open: boolean
@@ -20,7 +21,7 @@ const LoginSection = React.forwardRef<HTMLButtonElement, Props>(function LoginSe
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [logoutLoading, setLogoutLoading] = useState(false) // ✅ 로그아웃 로딩
+  const [logoutLoading, setLogoutLoading] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -28,7 +29,7 @@ const LoginSection = React.forwardRef<HTMLButtonElement, Props>(function LoginSe
     setError(null)
     try {
       await login({ email, password })
-      onSuccess() // HomePage가 authed=true, 덩굴 제거 처리
+      onSuccess()
     } catch {
       setError('로그인에 실패했습니다.')
     } finally {
@@ -36,7 +37,6 @@ const LoginSection = React.forwardRef<HTMLButtonElement, Props>(function LoginSe
     }
   }
 
-  // ✅ 로그아웃: await로 동기화 + 중복 클릭 방지
   const handleClickLogout = async () => {
     if (!onLogout || logoutLoading) return
     setLogoutLoading(true)
@@ -120,6 +120,12 @@ const LoginSection = React.forwardRef<HTMLButtonElement, Props>(function LoginSe
             >
               취소
             </button>
+          </div>
+
+          {/* ⛳️ 중첩 form 제거 → div로 변경 + 링크 경로 통일 (/sign-up 권장) */}
+          <div className="mt-4 text-sm">
+            <span className="text-neutral-600">처음이신가요? </span>
+            <Link to="/sign-up" className="text-emerald-700 hover:underline">회원가입</Link>
           </div>
 
           {error && (
