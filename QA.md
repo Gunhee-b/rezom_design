@@ -5,7 +5,20 @@
 ### Setup
 ```bash
 export BASE=http://localhost:3000
-# login → TOKEN (reuse your existing method)
+# Admin interface: http://localhost:5174
+# Frontend: http://localhost:5173
+# Backend: http://localhost:3000
+
+# === Get TOKEN for API testing ===
+# Method 1: Login via curl and extract token
+curl -s -X POST "$BASE/auth/login" -H "Content-Type: application/json" \
+ -d '{"email":"admin@example.com","password":"your-password"}' | jq -r '.accessToken'
+
+# Method 2: Login via admin interface (http://localhost:5174) and get token from browser
+# - Open browser dev tools → Application → Local Storage
+# - Look for the access token after successful login
+
+export TOKEN="your-token-here"
 ```
 
 ### 1. Create question with exactly one keyword
@@ -61,3 +74,40 @@ curl "$BASE/define/language-definition/questions/<one-id>"
 - **Context preservation**: Question context flows properly from define → detail → write → back
 - **Real-time updates**: SSE updates work when questions/keywords change
 - **Fallback behavior**: Daily questions still work in other parts of the app
+
+## Troubleshooting
+
+### Backend Issues
+```bash
+# Check if backend is running and accessible
+curl -s "$BASE/health" || curl -s "$BASE/"
+
+# Test CORS for admin interface
+curl -H "Origin: http://localhost:5174" -H "Access-Control-Request-Method: GET" \
+  -H "Access-Control-Request-Headers: X-Requested-With" -X OPTIONS "$BASE/"
+
+# Test SSE endpoint
+curl -N "$BASE/define/concepts/language-definition/updates"
+```
+
+### Authentication Issues
+```bash
+# Test login endpoint
+curl -v -X POST "$BASE/auth/login" -H "Content-Type: application/json" \
+ -d '{"email":"test@example.com","password":"password"}'
+
+# Verify token works
+curl -H "Authorization: Bearer $TOKEN" "$BASE/auth/me"
+```
+
+### Known Issues
+- **SSE Reconnection Loops**: If you see many SSE requests in backend logs, close all browser tabs for the frontend and admin interface, then reopen
+- **CORS Errors for Port 5175**: Make sure admin interface is running on port 5174, not 5175
+- **Login Issues**: Admin interface needs proper CSRF token handling - check browser console for errors
+
+### Current Status (as of testing)
+- ✅ Backend running on localhost:3000
+- ✅ SSE endpoint `/define/concepts/:slug/updates` working
+- ✅ CORS configured for localhost:5173 and localhost:5174
+- ⚠️  Admin interface should be on port 5174 (not 5175)
+- ⚠️  SSE reconnection loops may occur if frontend tabs left open during development
