@@ -5,10 +5,16 @@ export type Question = {
   title: string
   body: string
   authorId: number
+  tags?: string[]
   createdAt?: string
 }
 
-export type QuestionCreateDto = { title: string; body: string; categoryId?: number }
+export type QuestionCreateDto = { 
+  title: string
+  body: string
+  categoryId?: number
+  tags?: string[]
+}
 
 export async function createQuestion(dto: QuestionCreateDto): Promise<Question> {
   const { data } = await api.post('/questions', dto)

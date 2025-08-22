@@ -1,4 +1,7 @@
 // src/shared/theme/tokens.ts
+
+export type EdgeKind = 'green' | 'brown' | 'thin' | 'default';
+
 export const TOKENS = {
   colors: { ink:'#111', gray:'#9E9E9E', white:'#fff', green:'#1B5E20', brown:'#5D4037' },
   viewBox: { w: 1000, h: 700 },

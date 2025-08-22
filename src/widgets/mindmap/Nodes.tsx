@@ -9,9 +9,10 @@ import { resolveLink } from '@/shared/schema/rules';
 type Props = {
   nodes: Node[];
   map: (p: { x: number; y: number }) => { x: number; y: number }; // % → px
+  onNodeClick?: (nodeId: string, nodeData?: any) => void;
 };
 
-export const Nodes = memo(function Nodes({ nodes, map }: Props) {
+export const Nodes = memo(function Nodes({ nodes, map, onNodeClick }: Props) {
   return (
     <>
       {nodes.map((n) => {
@@ -49,12 +50,42 @@ export const Nodes = memo(function Nodes({ nodes, map }: Props) {
           </motion.g>
         );
 
+        const handleClick = (e: React.MouseEvent) => {
+          if (onNodeClick && !n.disabled) {
+            e.preventDefault();
+            e.stopPropagation();
+            // Extract node data attributes for click handling
+            const nodeData = Object.keys(n).reduce((acc, key) => {
+              if (key.startsWith('data-')) {
+                acc[key] = (n as any)[key];
+              }
+              return acc;
+            }, {} as any);
+            onNodeClick(n.id, nodeData);
+          }
+        };
+
         return (
           <g key={n.id} data-node-id={n.id}>
-            {n.to && !n.disabled ? (
+            {n.to && !n.disabled && !onNodeClick ? (
               <a href={resolveLink(n.to)} aria-label={n.ariaLabel || n.label}>
                 {inner}
               </a>
+            ) : onNodeClick && !n.disabled ? (
+              <g 
+                onClick={handleClick} 
+                style={{ cursor: 'pointer' }}
+                aria-label={n.ariaLabel || n.label}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    handleClick(e as any);
+                  }
+                }}
+              >
+                {inner}
+              </g>
             ) : (
               inner
             )}

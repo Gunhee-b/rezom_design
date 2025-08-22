@@ -1,47 +1,199 @@
-// src/pages/Define/DefinePage.tsx
-import { useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import {
-  // ✅ Daily Question API 호출/파싱 유틸
-  getDailyQuestion,
-  extractDailyText,
-  type DailyQuestionResponse,
-} from '@/shared/api/questions'
+import { useMemo, useState } from 'react'
+import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { getKeywords, type TopFiveKeyword, type ConceptKeyword } from '@/api/define'
 import { MindmapCanvas } from '@/widgets/mindmap/MindmapCanvas'
 import { defineSchema } from './define.schema'
+import { QuestionDetailView } from '@/components/QuestionDetailView'
+import { useConceptUpdates } from '@/hooks/useConceptUpdates'
+
+// Type guard to check if data is Top-5 format
+function isTop5Format(data: ConceptKeyword[] | TopFiveKeyword[]): data is TopFiveKeyword[] {
+  return data.length > 0 && 'rank' in data[0] && 'questionId' in data[0];
+}
 
 export default function DefinePage() {
-  // ✅ 1) Daily Question 가져오기
-  const { data } = useQuery<DailyQuestionResponse>({
-    queryKey: ['daily-question'],   // 캐시 키
-    queryFn: getDailyQuestion,      // 실제 API 호출 함수
-    // staleTime, refetchInterval 등을 원하면 여기 옵션 추가 가능
-  })
+  const { slug } = useParams<{ slug?: string }>();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  
+  // Default to language-definition if no slug provided
+  const conceptSlug = slug || 'language-definition';
+  const questionId = searchParams.get('questionId');
+  
+  const [selectedQuestionId, setSelectedQuestionId] = useState<number | null>(
+    questionId ? parseInt(questionId) : null
+  );
 
-  // ✅ 2) 응답에서 텍스트만 안전하게 추출
-  const dailyText = extractDailyText(data?.question)
+  // Fetch keywords (Top-5 format if available, fallback to ConceptKeyword)
+  const { data: keywordsData, isLoading } = useQuery({
+    queryKey: ['concept-keywords', conceptSlug],
+    queryFn: () => getKeywords(conceptSlug),
+  });
 
-  // ✅ 3) 스키마 복사 후 ‘센터 노드(title)’의 label만 교체
-  // define.schema.ts 를 보면 노드 속성은 label만 사용하고 있고,
-  // 센터 노드는 idFor(P,'title')로 생성됨. (id가 ':title'로 끝남)
+  // SSE integration for real-time updates
+  useConceptUpdates(conceptSlug, {
+    enabled: true,
+    onUpdate: (event) => {
+      // Invalidate queries on concept updates
+      queryClient.invalidateQueries({ queryKey: ['concept-keywords', conceptSlug] });
+      if (selectedQuestionId) {
+        queryClient.invalidateQueries({ 
+          queryKey: ['question-detail', conceptSlug, selectedQuestionId] 
+        });
+      }
+    },
+  });
+
+  // Transform data into mindmap schema
   const schema = useMemo(() => {
-    // 원본 불변성 유지: 깊은 복사
-    const s = JSON.parse(JSON.stringify(defineSchema)) as typeof defineSchema
+    // Start with base schema
+    const s = JSON.parse(JSON.stringify(defineSchema)) as typeof defineSchema;
 
-    // 센터 노드 찾기: id가 ':title'로 끝나는 노드
-    const center = s.nodes.find(n => n.id.endsWith(':title'))
-    if (center && dailyText) {
-      // ✅ MindmapCanvas는 label을 그리므로 label만 바꿔주면 됨
-      center.label = dailyText
+    // Update center node to fixed "Definition" text
+    const center = s.nodes.find(n => n.id.endsWith(':title'));
+    if (center) {
+      center.label = 'Definition';
     }
 
-    return s
-  }, [dailyText])
+    // Clear existing nodes and edges (except center)
+    s.nodes = s.nodes.filter(n => n.id.endsWith(':title'));
+    s.edges = [];
+
+    if (keywordsData && keywordsData.length > 0) {
+      let nodes = [];
+      
+      if (isTop5Format(keywordsData)) {
+        // Top-5 format: use rank order and questionId for navigation
+        nodes = keywordsData
+          .sort((a, b) => a.rank - b.rank)
+          .map((keyword, index) => {
+            const angle = (index / keywordsData.length) * 2 * Math.PI - Math.PI / 2;
+            const radius = 30;
+            const x = 50 + radius * Math.cos(angle);
+            const y = 48 + radius * Math.sin(angle);
+            
+            return {
+              id: `def:q${keyword.questionId}`,
+              x: Math.max(5, Math.min(95, x)),
+              y: Math.max(10, Math.min(85, y)),
+              label: keyword.label,
+              size: 'sm' as const,
+              questionId: keyword.questionId, // Store for click handling
+              rank: keyword.rank,
+            };
+          });
+      } else {
+        // Fallback ConceptKeyword format
+        const conceptKeywords = keywordsData as ConceptKeyword[];
+        nodes = conceptKeywords
+          .filter(k => k.active)
+          .sort((a, b) => a.position - b.position)
+          .slice(0, 5)
+          .map((keyword, index) => {
+            const angle = (index / Math.min(conceptKeywords.length, 5)) * 2 * Math.PI - Math.PI / 2;
+            const radius = 30;
+            const x = 50 + radius * Math.cos(angle);
+            const y = 48 + radius * Math.sin(angle);
+            
+            return {
+              id: `def:${keyword.keyword.toLowerCase()}`,
+              x: Math.max(5, Math.min(95, x)),
+              y: Math.max(10, Math.min(85, y)),
+              label: keyword.keyword,
+              size: 'sm' as const,
+            };
+          });
+      }
+
+      s.nodes.push(...nodes);
+
+      // Create edges from center to keyword nodes
+      if (center) {
+        const edges = nodes.map((node, index) => ({
+          id: `def:edge-${index}`,
+          from: center.id,
+          to: node.id,
+          style: (selectedQuestionId && 'questionId' in node && node.questionId === selectedQuestionId) 
+            ? 'green' as const 
+            : (index % 2 === 0 ? 'green' as const : 'thin' as const),
+          curvature: 0.1 + (index * 0.05)
+        }));
+        s.edges.push(...edges);
+      }
+    }
+
+    return s;
+  }, [keywordsData, selectedQuestionId]);
+
+  // Handle node clicks
+  const handleNodeClick = (nodeId: string) => {
+    if (!keywordsData || !isTop5Format(keywordsData)) return;
+    
+    // Extract questionId from node
+    const node = schema.nodes.find(n => n.id === nodeId);
+    if (node && 'questionId' in node && typeof node.questionId === 'number') {
+      const questionId = node.questionId;
+      setSelectedQuestionId(questionId);
+      
+      // Update URL without full navigation
+      const newSearchParams = new URLSearchParams(searchParams);
+      newSearchParams.set('questionId', questionId.toString());
+      navigate(`/define/${conceptSlug}?${newSearchParams.toString()}`, { replace: true });
+    }
+  };
+
+  // Handle question detail close
+  const handleQuestionDetailClose = () => {
+    setSelectedQuestionId(null);
+    
+    // Remove questionId from URL
+    const newSearchParams = new URLSearchParams(searchParams);
+    newSearchParams.delete('questionId');
+    const newSearch = newSearchParams.toString();
+    navigate(`/define/${conceptSlug}${newSearch ? `?${newSearch}` : ''}`, { replace: true });
+  };
+
+  if (isLoading) {
+    return (
+      <div className="pt-6">
+        <div className="flex items-center justify-center h-96">
+          <div className="animate-pulse text-gray-500">
+            개념을 불러오는 중...
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="pt-6">
-      {/* ✅ key에 dailyText를 넣어 질문이 바뀔 때 SVG가 깔끔히 리렌더 */}
-      <MindmapCanvas key={dailyText || 'no-daily'} schema={schema} />
+      {/* Mindmap Canvas */}
+      <MindmapCanvas 
+        key={`${conceptSlug}-${keywordsData?.length || 0}-${selectedQuestionId || 'none'}`} 
+        schema={schema}
+        onNodeClick={handleNodeClick}
+      />
+      
+      {/* Question Detail Modal */}
+      {selectedQuestionId && (
+        <QuestionDetailView
+          slug={conceptSlug}
+          questionId={selectedQuestionId}
+          onClose={handleQuestionDetailClose}
+        />
+      )}
+      
+      {/* Debug info (remove in production) */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="fixed bottom-4 right-4 bg-black bg-opacity-75 text-white p-2 rounded text-xs">
+          <div>Slug: {conceptSlug}</div>
+          <div>Keywords: {keywordsData?.length || 0}</div>
+          <div>Format: {keywordsData && isTop5Format(keywordsData) ? 'Top-5' : 'Fallback'}</div>
+          <div>Selected: {selectedQuestionId || 'None'}</div>
+        </div>
+      )}
     </div>
-  )
+  );
 }

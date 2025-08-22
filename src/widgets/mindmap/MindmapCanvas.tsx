@@ -5,12 +5,16 @@ import { Edges } from './Edges';
 import { Nodes } from './Nodes';
 import { mapPercentToPx, Pt } from '@/shared/lib/geo';
 
-type Props = { schema: ViewSchema; interactive?: boolean };
+type Props = { 
+  schema: ViewSchema; 
+  interactive?: boolean;
+  onNodeClick?: (nodeId: string, nodeData?: any) => void;
+};
 
 const W = 1000;
 const H = 700;
 
-export const MindmapCanvas = memo(function MindmapCanvas({ schema }: Props) {
+export const MindmapCanvas = memo(function MindmapCanvas({ schema, onNodeClick }: Props) {
   const map = (p: { x: number; y: number }) => ({
     x: mapPercentToPx(p.x, W),
     y: mapPercentToPx(p.y, H),
@@ -40,7 +44,7 @@ export const MindmapCanvas = memo(function MindmapCanvas({ schema }: Props) {
         <Edges edges={schema.edges} getOpt={getOpt} hasId={hasId} />
 
         {/* nodes */}
-        <Nodes nodes={schema.nodes} map={map} />
+        <Nodes nodes={schema.nodes} map={map} onNodeClick={onNodeClick} />
       </svg>
     </div>
   );

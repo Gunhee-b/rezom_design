@@ -1,206 +1,201 @@
 // src/pages/DefineTopic/DefineTopicPage.tsx
-import { useMemo, useState } from 'react'
-import { useParams } from 'react-router-dom'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMemo, useState, useCallback } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { MindmapCanvas } from '@/widgets/mindmap/MindmapCanvas'
-import { TOPIC_PRESETS } from '@/data/presets/topic'
-import { makeTopicSchema } from './makeTopicSchema'
+import { makeDefineSchema, type ConceptKeyword, type KeywordQuestion } from './makeDefineSchema'
+import { QuestionDetailPanel } from '@/components/QuestionDetailPanel'
+import { getKeywords } from '@/api/define'
+import { useConceptUpdates } from '@/hooks/useConceptUpdates'
+import { LiveUpdateStatus } from '@/components/LiveUpdateStatus'
 
-// ✅ 최소 동작용 API 래퍼들 (앞서 만든 src/api/define.ts)
-import {
-  listSuggestions,
-  listQuestions,
-  postSuggest,
-  approveSuggestion,
-  type Suggestion,
-  type Question,
-} from '@/api/define'
-
-// ✅ 클라이언트 로그인 상태 감지 (당신 프로젝트의 토큰 유틸)
-import { token } from '@/shared/lib/token'
-
-function cap(s: string) {
-  return s.slice(0, 1).toUpperCase() + s.slice(1)
+// API function to fetch question by ID
+async function fetchQuestion(questionId: number): Promise<KeywordQuestion> {
+  const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+  const response = await fetch(`${baseUrl}/questions/${questionId}`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch question: ${response.statusText}`);
+  }
+  return response.json();
 }
 
 export default function DefineTopicPage() {
-  const { slug = 'happiness' } = useParams<{ slug: string }>()
-  const queryClient = useQueryClient()
+  const { slug = 'language-definition' } = useParams<{ slug: string }>()
+  const navigate = useNavigate()
+  
+  // ----- State for question detail panel -----
+  const [selectedKeyword, setSelectedKeyword] = useState<{
+    keyword: string;
+    questionId: number | null;
+  } | null>(null)
+  const [selectedQuestion, setSelectedQuestion] = useState<KeywordQuestion | null>(null)
+  const [panelOpen, setPanelOpen] = useState(false)
+  
+  // ----- Live Updates State -----
+  const [liveUpdateCount, setLiveUpdateCount] = useState(0)
+  const [lastUpdateMessage, setLastUpdateMessage] = useState<string | null>(null)
 
-  // ----- 기존 Mindmap 렌더링 -----
-  const preset = TOPIC_PRESETS[slug.toLowerCase()] ?? TOPIC_PRESETS.happiness
-  const schema = useMemo(
-    () => makeTopicSchema(cap(slug), preset.question, preset.others),
-    [slug, preset]
-  )
-
-  // ----- 로그인 여부 (미로그인 시 제안/승인 버튼 비활성) -----
-  const authed = localStorage.getItem('authed') === '1' || !!token.get()
-
-  // ----- 제안 입력 상태 -----
-  const [kwInput, setKwInput] = useState('')
-  const [submitErr, setSubmitErr] = useState<string | null>(null)
-
-  // ----- 제안 목록 / 생성된 질문 목록 -----
-  const { data: suggestions, isLoading: suggLoading } = useQuery<Suggestion[]>({
-    queryKey: ['define', 'suggestions', slug],
-    queryFn: () => listSuggestions(slug),
+  // ----- Fetch Keywords (Top-5 admin-curated list) -----
+  const { data: keywords = [], isLoading: keywordsLoading, refetch: refetchKeywords } = useQuery({
+    queryKey: ['define', 'keywords', slug],
+    queryFn: () => getKeywords(slug),
   })
 
-  const { data: questions, isLoading: qLoading } = useQuery<Question[]>({
-    queryKey: ['define', 'questions', slug, { limit: 20 }],
-    queryFn: () => listQuestions(slug, { limit: 20 }),
+  // ----- Fetch selected question when a keyword is clicked -----
+  const { data: questionDetail, refetch: refetchQuestion } = useQuery<KeywordQuestion | null>({
+    queryKey: ['question', selectedKeyword?.questionId],
+    queryFn: () => selectedKeyword?.questionId ? fetchQuestion(selectedKeyword.questionId) : null,
+    enabled: !!selectedKeyword?.questionId,
   })
 
-  // ----- 제안 생성 뮤테이션 -----
-  const suggestMut = useMutation({
-    mutationFn: async (keywords: string[]) => postSuggest(slug, keywords),
-    onSuccess: () => {
-      setKwInput('')
-      setSubmitErr(null)
-      queryClient.invalidateQueries({ queryKey: ['define', 'suggestions', slug] })
-    },
-    onError: (err: any) => {
-      // 서버가 {"ok":false,"error":{"message":"Bad CSRF token"...}} 형식이면 메시지 노출
-      const msg =
-        err?.body?.error?.message ||
-        err?.message ||
-        '제안에 실패했습니다.'
-      setSubmitErr(msg)
-    },
-  })
+  // ----- Generate the new define schema -----
+  const schema = useMemo(() => {
+    // Filter to only ConceptKeyword format for makeDefineSchema
+    const conceptKeywords = Array.isArray(keywords) && keywords.length > 0 && 'id' in keywords[0] 
+      ? keywords as ConceptKeyword[] 
+      : [];
+    return makeDefineSchema(slug, conceptKeywords, questionDetail || undefined);
+  }, [slug, keywords, questionDetail])
 
-  // ----- (선택) 제안 승인: 관리자/권한자만 UI 제공 예정 -----
-  const approveMut = useMutation({
-    mutationFn: async (suggestionId: number) =>
-      approveSuggestion(slug, suggestionId, token.get() ?? ''),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['define', 'suggestions', slug] })
-      queryClient.invalidateQueries({ queryKey: ['define', 'questions', slug] })
-    },
-  })
-
-  // ✅ onSuggestSubmit: 존재하지 않던 메서드 구현
-  async function onSuggestSubmit() {
-    if (!authed) {
-      setSubmitErr('로그인 후 이용 가능합니다.')
-      return
+  // ----- Handle node clicks -----
+  const handleNodeClick = useCallback((nodeId: string, nodeData?: any) => {
+    console.log('Node clicked:', nodeId, nodeData);
+    
+    // Only handle keyword node clicks
+    if (nodeId.includes('keyword-')) {
+      const keywordId = nodeData?.['data-keyword-id'];
+      const questionId = nodeData?.['data-question-id'];
+      
+      if (keywordId) {
+        const conceptKeywords = Array.isArray(keywords) && keywords.length > 0 && 'id' in keywords[0] ? keywords as ConceptKeyword[] : [];
+        const keyword = conceptKeywords.find(k => k.id.toString() === keywordId);
+        if (keyword) {
+          setSelectedKeyword({
+            keyword: keyword.keyword,
+            questionId: questionId ? parseInt(questionId) : null,
+          });
+          setPanelOpen(true);
+          
+          // If there's a question, it will be fetched automatically by the query
+          if (questionId) {
+            refetchQuestion();
+          }
+        }
+      }
     }
-    const keywords = kwInput
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean)
+  }, [keywords, refetchQuestion])
 
-    if (keywords.length === 0) {
-      setSubmitErr('키워드를 한 개 이상 입력해 주세요.')
-      return
-    }
-    suggestMut.mutate(keywords)
+  // ----- Handle write button in question panel -----
+  const handleWriteClick = useCallback((questionId: number) => {
+    navigate(`/write?questionId=${questionId}`);
+  }, [navigate])
+
+  // ----- Handle panel close -----
+  const handlePanelClose = useCallback(() => {
+    setPanelOpen(false);
+    setSelectedKeyword(null);
+    setSelectedQuestion(null);
+  }, [])
+
+  // ----- Live Updates via SSE -----
+  const handleLiveUpdate = useCallback(() => {
+    setLiveUpdateCount(prev => prev + 1)
+    setLastUpdateMessage(`Keywords updated at ${new Date().toLocaleTimeString()}`)
+    
+    // Refetch keywords when live update received
+    refetchKeywords()
+    
+    // Clear message after 3 seconds
+    setTimeout(() => setLastUpdateMessage(null), 3000)
+  }, [refetchKeywords])
+
+  const { isConnected, error: sseError } = useConceptUpdates(slug, {
+    enabled: true,
+    onUpdate: handleLiveUpdate,
+    onError: (error) => {
+      console.warn('SSE connection error:', error)
+    },
+  })
+
+  if (keywordsLoading) {
+    return (
+      <main className="min-h-screen bg-neutral-50 pt-6 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading definition graph...</p>
+        </div>
+      </main>
+    )
   }
 
   return (
     <main className="min-h-screen bg-neutral-50 pt-6">
-      {/* 상단 마인드맵 */}
-      <MindmapCanvas schema={schema} />
+      {/* Live Update Status */}
+      <LiveUpdateStatus
+        isConnected={isConnected}
+        error={sseError}
+        updateCount={liveUpdateCount}
+        lastMessage={lastUpdateMessage}
+      />
 
-      {/* 구분선 */}
-      <hr className="mt-8 border-neutral-200" />
-
-      {/* 새 질문 제안 섹션 */}
-      <section className="mx-auto mt-6 max-w-3xl px-4">
-        <h2 className="mb-2 text-lg font-semibold">새 질문 제안</h2>
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={kwInput}
-            onChange={(e) => setKwInput(e.target.value)}
-            placeholder="키워드를 콤마(,)로 구분해 입력 (예: art, obsession)"
-            className="flex-1 rounded-md border border-neutral-300 px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500"
-            disabled={!authed || suggestMut.isPending}
-          />
-          <button
-            className="rounded bg-emerald-600 px-4 py-2 text-white disabled:opacity-50"
-            onClick={onSuggestSubmit}
-            disabled={!authed || suggestMut.isPending}
-          >
-            {suggestMut.isPending ? '제안 중…' : '제안'}
-          </button>
-        </div>
-        {!authed && (
-          <p className="mt-2 text-sm text-neutral-500">
-            로그인 후 이용 가능합니다.
+      {/* Header */}
+      <div className="mx-auto max-w-4xl px-4 mb-6">
+        <div className="text-center">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            {slug.split('-').map(word => 
+              word.charAt(0).toUpperCase() + word.slice(1)
+            ).join(' ')} Graph
+          </h1>
+          <p className="text-gray-600">
+            Click any keyword node to see its associated question. The center represents the core definition.
           </p>
-        )}
-        {submitErr && (
-          <p className="mt-2 text-sm text-red-600">{submitErr}</p>
-        )}
-        <p className="mt-2 text-xs text-neutral-400">
-          ※ 브라우저 쿠키 + CSRF 더블서밋으로 인증됩니다.
-        </p>
-      </section>
+        </div>
+      </div>
 
-      {/* 제안 목록 */}
-      <section className="mx-auto mt-8 max-w-3xl px-4">
-        <h3 className="mb-2 text-base font-semibold">제안 목록</h3>
-        {suggLoading ? (
-          <p className="text-sm text-neutral-500">불러오는 중…</p>
-        ) : suggestions && suggestions.length > 0 ? (
-          <ul className="space-y-2">
-            {suggestions.map((s) => (
-              <li
-                key={s.id}
-                className="flex items-center justify-between rounded-lg border border-neutral-200 bg-white px-4 py-3"
-              >
-                <div>
-                  <div className="font-medium">{s.suggestion}</div>
-                  <div className="text-xs text-neutral-500">
-                    keywords: {s.keywords.join(', ')} · status: {s.status}
-                  </div>
-                </div>
-                {/* 관리자/권한자 영역: 일단 로그인 상태에서만 보이도록 */}
-                <div className="flex items-center gap-2">
-                  <button
-                    className="rounded border px-3 py-1 text-sm disabled:opacity-50"
-                    onClick={() => approveMut.mutate(s.id)}
-                    disabled={!authed || approveMut.isPending}
-                    title={!authed ? '로그인 필요' : '승인하여 질문 생성'}
-                  >
-                    {approveMut.isPending ? '승인 중…' : '승인'}
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-sm text-neutral-500">아직 제안이 없습니다.</p>
-        )}
-      </section>
+      {/* Define Graph */}
+      <div className="mx-auto max-w-6xl px-4">
+        <MindmapCanvas 
+          schema={schema} 
+          onNodeClick={handleNodeClick}
+        />
+      </div>
 
-      {/* 생성된 질문 목록 */}
-      <section className="mx-auto mt-8 mb-16 max-w-3xl px-4">
-        <h3 className="mb-2 text-base font-semibold">생성된 질문</h3>
-        {qLoading ? (
-          <p className="text-sm text-neutral-500">불러오는 중…</p>
-        ) : questions && questions.length > 0 ? (
-          <ul className="space-y-2">
-            {questions.map((q) => (
-              <li
-                key={q.id}
-                className="rounded-lg border border-neutral-200 bg-white px-4 py-3"
+      {/* Keywords Summary */}
+      <div className="mx-auto max-w-4xl px-4 mt-8">
+        <div className="bg-white rounded-lg p-6 shadow-sm border">
+          <h2 className="text-lg font-semibold mb-4">Admin-Curated Keywords</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+            {keywords.slice(0, 5).map((keyword) => (
+              <div
+                key={keyword.id}
+                className={`p-3 rounded-lg border text-center cursor-pointer transition-colors ${
+                  keyword.currentQuestionId 
+                    ? 'bg-emerald-50 border-emerald-200 hover:bg-emerald-100' 
+                    : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                }`}
+                onClick={() => handleNodeClick(`keyword-${keyword.id}`, {
+                  'data-keyword-id': keyword.id.toString(),
+                  'data-question-id': keyword.currentQuestionId?.toString() || '',
+                })}
               >
-                <div className="font-medium">{q.title}</div>
-                {q.tags?.length ? (
-                  <div className="mt-1 text-xs text-neutral-500">
-                    tags: {q.tags.join(', ')}
-                  </div>
-                ) : null}
-              </li>
+                <div className="font-medium text-gray-900">{keyword.keyword}</div>
+                <div className="text-xs text-gray-500 mt-1">
+                  {keyword.currentQuestionId ? 'Has Question' : 'No Question'}
+                </div>
+              </div>
             ))}
-          </ul>
-        ) : (
-          <p className="text-sm text-neutral-500">아직 생성된 질문이 없습니다.</p>
-        )}
-      </section>
+          </div>
+        </div>
+      </div>
+
+      {/* Question Detail Panel */}
+      <QuestionDetailPanel
+        question={questionDetail || null}
+        keyword={selectedKeyword?.keyword || ''}
+        isOpen={panelOpen}
+        onClose={handlePanelClose}
+        onWriteClick={handleWriteClick}
+      />
     </main>
   )
 }

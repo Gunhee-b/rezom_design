@@ -35,7 +35,7 @@ export const router = createBrowserRouter([
       { path: 'profile', element: <ProfilePage />, errorElement: <RouteErrorBoundary /> },
       { path: 'writinghub', element: <WritingHubPage />, errorElement: <RouteErrorBoundary /> },
       { path: 'define', element: <DefinePage />, errorElement: <RouteErrorBoundary /> },
-      { path: 'define/:slug', element: <DefineTopicPage />, errorElement: <RouteErrorBoundary /> },
+      { path: 'define/:slug', element: <DefinePage />, errorElement: <RouteErrorBoundary /> },
       { path: 'write', element: <WritePage />, errorElement: <RouteErrorBoundary /> },
 
       // ✅ 새 경로: /users/me/questions (목록형)
